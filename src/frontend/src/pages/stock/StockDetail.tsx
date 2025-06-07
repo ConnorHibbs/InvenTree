@@ -11,8 +11,8 @@ import {
   IconSitemap
 } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
-import { type ReactNode, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { type ReactNode, useEffect, useMemo, useState } from 'react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
 import { api } from '../../App';
 import AdminButton from '../../components/buttons/AdminButton';
@@ -77,6 +77,8 @@ import { StockTrackingTable } from '../../tables/stock/StockTrackingTable';
 
 export default function StockDetail() {
   const { id } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const onOpenAction = searchParams.get('open')?.toLowerCase();
 
   const user = useUserState();
 
@@ -658,24 +660,122 @@ export default function StockDetail() {
     parts: stockitem.part_detail ? [stockitem.part_detail] : []
   });
 
+  // Can this stock item be transferred to a different location?
+  const canTransfer =
+    user.hasChangeRole(UserRoles.stock) &&
+    !stockitem.sales_order &&
+    !stockitem.belongs_to &&
+    !stockitem.customer &&
+    !stockitem.consumed_by;
+
+  const isBuilding = stockitem.is_building;
+
+  const serial = stockitem.serial;
+  const serialized =
+    serial != null &&
+    serial != undefined &&
+    serial != '' &&
+    stockitem.quantity == 1;
+
+  const openActions = [
+    {
+      name: t`Count`,
+      tooltip: t`Count stock`,
+      hidden: serialized || !canTransfer || isBuilding,
+      icon: <InvenTreeIcon icon='stocktake' iconProps={{ color: 'blue' }} />,
+      onClick: () => {
+        stockitem.pk && countStockItem.open();
+      }
+    },
+    {
+      name: t`Add`,
+      tooltip: t`Add Stock`,
+      hidden: serialized || !canTransfer || isBuilding,
+      icon: <InvenTreeIcon icon='add' iconProps={{ color: 'green' }} />,
+      onClick: () => {
+        stockitem.pk && addStockItem.open();
+      }
+    },
+    {
+      name: t`Remove`,
+      tooltip: t`Remove Stock`,
+      hidden:
+        serialized || !canTransfer || isBuilding || stockitem.quantity <= 0,
+      icon: <InvenTreeIcon icon='remove' iconProps={{ color: 'red' }} />,
+      onClick: () => {
+        stockitem.pk && removeStockItem.open();
+      }
+    },
+    {
+      name: t`Transfer`,
+      tooltip: t`Transfer Stock`,
+      hidden: !canTransfer,
+      icon: <InvenTreeIcon icon='transfer' iconProps={{ color: 'blue' }} />,
+      onClick: () => {
+        stockitem.pk && transferStockItem.open();
+      }
+    },
+    {
+      name: t`Serialize`,
+      tooltip: t`Serialize stock`,
+      hidden:
+        isBuilding ||
+        serialized ||
+        stockitem?.quantity < 1 ||
+        stockitem?.part_detail?.trackable != true,
+      icon: <InvenTreeIcon icon='serial' iconProps={{ color: 'blue' }} />,
+      onClick: () => {
+        serializeStockItem.open();
+      }
+    },
+    {
+      name: t`Order`,
+      tooltip: t`Order Stock`,
+      hidden:
+        !user.hasAddRole(UserRoles.purchase_order) ||
+        !stockitem.part_detail?.active ||
+        !stockitem.part_detail?.purchaseable,
+      icon: <IconShoppingCart color='blue' />,
+      onClick: () => {
+        orderPartsWizard.openWizard();
+      }
+    },
+    {
+      name: t`Return`,
+      tooltip: t`Return from customer`,
+      hidden: !stockitem.customer,
+      icon: (
+        <InvenTreeIcon icon='return_orders' iconProps={{ color: 'blue' }} />
+      ),
+      onClick: () => {
+        stockitem.pk && returnStockItem.open();
+      }
+    },
+    {
+      name: t`Assign to Customer`,
+      tooltip: t`Assign to a customer`,
+      hidden: !!stockitem.customer,
+      icon: <InvenTreeIcon icon='customer' iconProps={{ color: 'blue' }} />,
+      onClick: () => {
+        stockitem.pk && assignToCustomer.open();
+      }
+    }
+  ];
+
+  useEffect(() => {
+    if (stockitem.pk) {
+      console.log('Stock PK:', stockitem.pk, '- Open:', onOpenAction);
+      openActions.forEach((action) => {
+        console.log('Action:', action.name);
+        const actionName = action.name.split(' ')[0].toLowerCase();
+        if (!action.hidden && actionName === onOpenAction) {
+          action.onClick();
+        }
+      });
+    }
+  }, [stockitem.pk, onOpenAction]);
+
   const stockActions = useMemo(() => {
-    // Can this stock item be transferred to a different location?
-    const canTransfer =
-      user.hasChangeRole(UserRoles.stock) &&
-      !stockitem.sales_order &&
-      !stockitem.belongs_to &&
-      !stockitem.customer &&
-      !stockitem.consumed_by;
-
-    const isBuilding = stockitem.is_building;
-
-    const serial = stockitem.serial;
-    const serialized =
-      serial != null &&
-      serial != undefined &&
-      serial != '' &&
-      stockitem.quantity == 1;
-
     return [
       <AdminButton model={ModelType.stockitem} id={stockitem.pk} />,
       <LocateItemButton stockId={stockitem.pk} />,
@@ -694,102 +794,7 @@ export default function StockDetail() {
       <ActionDropdown
         tooltip={t`Stock Operations`}
         icon={<IconPackages />}
-        actions={[
-          {
-            name: t`Count`,
-            tooltip: t`Count stock`,
-            hidden: serialized || !canTransfer || isBuilding,
-            icon: (
-              <InvenTreeIcon icon='stocktake' iconProps={{ color: 'blue' }} />
-            ),
-            onClick: () => {
-              stockitem.pk && countStockItem.open();
-            }
-          },
-          {
-            name: t`Add`,
-            tooltip: t`Add Stock`,
-            hidden: serialized || !canTransfer || isBuilding,
-            icon: <InvenTreeIcon icon='add' iconProps={{ color: 'green' }} />,
-            onClick: () => {
-              stockitem.pk && addStockItem.open();
-            }
-          },
-          {
-            name: t`Remove`,
-            tooltip: t`Remove Stock`,
-            hidden:
-              serialized ||
-              !canTransfer ||
-              isBuilding ||
-              stockitem.quantity <= 0,
-            icon: <InvenTreeIcon icon='remove' iconProps={{ color: 'red' }} />,
-            onClick: () => {
-              stockitem.pk && removeStockItem.open();
-            }
-          },
-          {
-            name: t`Transfer`,
-            tooltip: t`Transfer Stock`,
-            hidden: !canTransfer,
-            icon: (
-              <InvenTreeIcon icon='transfer' iconProps={{ color: 'blue' }} />
-            ),
-            onClick: () => {
-              stockitem.pk && transferStockItem.open();
-            }
-          },
-          {
-            name: t`Serialize`,
-            tooltip: t`Serialize stock`,
-            hidden:
-              isBuilding ||
-              serialized ||
-              stockitem?.quantity < 1 ||
-              stockitem?.part_detail?.trackable != true,
-            icon: <InvenTreeIcon icon='serial' iconProps={{ color: 'blue' }} />,
-            onClick: () => {
-              serializeStockItem.open();
-            }
-          },
-          {
-            name: t`Order`,
-            tooltip: t`Order Stock`,
-            hidden:
-              !user.hasAddRole(UserRoles.purchase_order) ||
-              !stockitem.part_detail?.active ||
-              !stockitem.part_detail?.purchaseable,
-            icon: <IconShoppingCart color='blue' />,
-            onClick: () => {
-              orderPartsWizard.openWizard();
-            }
-          },
-          {
-            name: t`Return`,
-            tooltip: t`Return from customer`,
-            hidden: !stockitem.customer,
-            icon: (
-              <InvenTreeIcon
-                icon='return_orders'
-                iconProps={{ color: 'blue' }}
-              />
-            ),
-            onClick: () => {
-              stockitem.pk && returnStockItem.open();
-            }
-          },
-          {
-            name: t`Assign to Customer`,
-            tooltip: t`Assign to a customer`,
-            hidden: !!stockitem.customer,
-            icon: (
-              <InvenTreeIcon icon='customer' iconProps={{ color: 'blue' }} />
-            ),
-            onClick: () => {
-              stockitem.pk && assignToCustomer.open();
-            }
-          }
-        ]}
+        actions={openActions}
       />,
       <OptionsActionDropdown
         tooltip={t`Stock Item Actions`}
